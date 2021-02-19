@@ -1,31 +1,32 @@
-#Usage: python get_submissions.py [Subreddit name]
-#Authors: JackLee9355
-#Created: 2/16/2021
+# Usage: python get_submissions.py [Subreddit name]
+# Authors: JackLee9355
+# Created: 2/16/2021
 
-#The scope of this file is solely fetching submissions and saving them to a sql database for further usage elsewhere.
+# The scope of this file is solely fetching submissions and saving them to a sql database for further usage elsewhere.
 
 import requests
 import sqlite3
 import sys
 import os
 import time
+from config import DATABASES_PATH, PUSHSHIFT_URL
+import json
 
-#A maximum of ten million submissions can be retrived with this depth
+# A maximum of ten million submissions can be retrived with this depth
 sys.setrecursionlimit(100000)
-
-PUSHSHIFT_URL = "https://api.pushshift.io/reddit/submission/search/?"
-DATABASES_PATH = "databases/"
 
 total_fetched = 0
 
 def get_json_from_url(url):
     request = None
-    attempts = 5
+    attempts = 10
     while (request is None or request.status_code != 200) and attempts > 0:
         request = requests.get(url)
         if request.status_code != 200:
             print("Wrong status code. Retrying/sleeping.")
-            time.sleep(60 * (5 - attempts))
+            # Will try again right away the first time. Then it will sleep progressively longer.
+            # Maybe the first time is an error. Then moving onto longer and longer api timeouts.
+            time.sleep(20 * (10 - attempts))
             attempts -= 1
 
     if request.status_code != 200:
@@ -45,12 +46,13 @@ def build_url(params):
 def save_submission_json(submission_json, database):
     cursor = database.cursor()
     for item in submission_json:
-        cursor.execute("INSERT INTO submissions VALUES (?, ?, ?)", (str(item["id"]), int(item["created_utc"]), str(item)))
+        cursor.execute("INSERT INTO submissions VALUES (?, ?, ?)", (str(item["id"]), int(item["created_utc"]), json.dumps(item)))
     database.commit()
+    cursor.close
 
 def save_all_before(subreddit, utc, database):
     global total_fetched
-    #Pushshift caps size to 100
+    # Pushshift caps size to 100
     url = build_url({"subreddit": subreddit, "before": str(utc), "size": "100"})
     submission_json = get_json_from_url(url)["data"]
     if len(submission_json) > 0:
@@ -72,7 +74,7 @@ if __name__ == "__main__":
     
     database = sqlite3.connect(DATABASES_PATH + subreddit + ".db")
     cursor = database.cursor()
-    #Checks if the table exists. If it doesn't creates it.
+    # Checks if the table exists. If it doesn't creates it.
     cursor.execute('''SELECT name FROM sqlite_master WHERE type='table' AND name='submissions';''')
     if len(cursor.fetchall()) == 0:
         cursor.execute('''CREATE TABLE submissions (
