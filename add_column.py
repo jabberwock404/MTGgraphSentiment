@@ -15,17 +15,12 @@ import ast
 def add_columns_before(database, field, before):
     cursor = database.cursor()
     cursor.execute("SELECT * FROM submissions WHERE created_utc < " + str(before) + " AND " + field + " IS NULL;")
-    row = cursor.fetchone()
-    to_add = {} # Running out of memory might be a concern here.
-    while row is not None:
+    rows = cursor.fetchall()
+    for row in rows:
         row_json = json.loads(row[2])
         # Use the row below if the database was dumped using str(dict) rather than json.dumps()
         # row_json = ast.literal_eval(row[2])
-        row_id = row[0]
-        to_add[row_id] = row_json[field]
-        row = cursor.fetchone() # For use in the next Iteration
-    for row_id in to_add:
-        cursor.execute("UPDATE submissions SET " + field + " = (?) WHERE id IS '" + row_id + "';", (to_add[row_id],))
+        cursor.execute("UPDATE submissions SET " + field + " = (?) WHERE id IS '" + str(row[0]) + "';", (row_json[field],))
     database.commit()
 
 if __name__ == "__main__":    
