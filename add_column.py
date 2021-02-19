@@ -7,6 +7,8 @@
 
 import sqlite3
 import sys
+
+from nltk import data
 from config import DATABASES_PATH
 import time
 import json
@@ -17,10 +19,19 @@ def add_columns_before(database, field, before):
     cursor.execute("SELECT * FROM submissions WHERE created_utc < " + str(before) + " AND " + field + " IS NULL;")
     rows = cursor.fetchall()
     for row in rows:
-        row_json = json.loads(row[2])
+        # row_json = json.loads(row[2])
         # Use the row below if the database was dumped using str(dict) rather than json.dumps()
-        # row_json = ast.literal_eval(row[2])
-        cursor.execute("UPDATE submissions SET " + field + " = (?) WHERE id IS '" + str(row[0]) + "';", (row_json[field],))
+        row_json = ast.literal_eval(row[2])
+        if field in row_json:
+            cursor.execute("UPDATE submissions SET " + field + " = (?) WHERE id IS '" + str(row[0]) + "';", (row_json[field],))
+    database.commit()
+
+def create_column(database, field, type):
+    # Creates the column if it doesn't exist.
+    cursor = database.cursor()
+    cursor.execute("SELECT * FROM pragma_table_info('submissions') WHERE name='" + field + "';")
+    if len(cursor.fetchall()) == 0:
+        cursor.execute("ALTER TABLE submissions ADD COLUMN " + field + " " + type + ";")
     database.commit()
 
 if __name__ == "__main__":    
@@ -32,11 +43,9 @@ if __name__ == "__main__":
     field_type = sys.argv[3]
 
     database = sqlite3.connect(DATABASES_PATH + subreddit + ".db")
-    cursor = database.cursor()
-    cursor.execute("SELECT * FROM pragma_table_info('submissions') WHERE name='" + field + "';")
-    if len(cursor.fetchall()) == 0:
-        cursor.execute("ALTER TABLE submissions ADD COLUMN " + field + " " + field_type + ";")
+    create_column(database, field, field_type)
 
+    cursor = database.cursor()
     min_utc = cursor.execute("SELECT MIN(created_utc) FROM submissions WHERE " + field + " IS NOT NULL;").fetchone()
     before = min_utc[0] if min_utc[0] is not None else int(time.time())
 
